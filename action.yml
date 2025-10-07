@@ -1,0 +1,101 @@
+name: Cloud Manager Pipeline Update
+
+description: "GitHub Action to update an Adobe Cloud Manager pipeline to deploy the code from the branch or tag that triggered the workflow."
+
+inputs:
+  pipelineId:
+    description: 'Cloud Manager Pipeline ID'
+    required: true
+  programId:
+    description: 'Cloud Manager Program ID'
+    required: true
+  repositoryId:
+    description: 'Cloud Manager Repository ID'
+    required: false
+  stageEnvironmentId:
+    description: 'Cloud Manager Stage Environment ID'
+    required: false
+  imsOrgId:
+    description: 'IMS Organization ID'
+    required: true
+  technicalAccountId:
+    description: 'IMS Technical Account ID'
+    required: true
+  technicalAccountEmail:
+    description: 'IMS Technical Account Email'
+    required: true
+  clientId:
+    description: 'IMS Client ID'
+    required: true
+  clientSecret:
+    description: 'IMS Client Secret'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set environment variable to disable aio telemetry
+      run: echo "AIO_TELEMETRY_DISABLED=true" >> $GITHUB_ENV
+      shell: bash
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 'lts/*'
+
+    - name: Cache node_modules
+      uses: actions/cache@v4
+      with:
+        path: ${{ github.action_path }}/node_modules
+        key: ${{ runner.os }}-node-${{ hashFiles('${{ github.action_path }}/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-
+
+    - name: Install dependencies
+      run: cd "${{ github.action_path }}" && npm install
+      shell: bash
+
+    - name: Install Cloud Manager plugin
+      run: cd "${{ github.action_path }}" && npx aio plugins:install @adobe/aio-cli-plugin-cloudmanager
+      shell: bash
+
+    - name: Create config.json for aio
+      run: |
+        set -e
+        cd "${{ github.action_path }}"
+        echo '{
+          "client_id": "${{ inputs.clientId }}",
+          "client_secrets": ["${{ inputs.clientSecret }}"],
+          "technical_account_id": "${{ inputs.technicalAccountId }}",
+          "technical_account_email": "${{ inputs.technicalAccountEmail }}",
+          "ims_org_id": "${{ inputs.imsOrgId }}",
+          "scopes": [
+            "openid", "AdobeID", "read_organizations", "additional_info.projectedProductContext", "read_pc.dma_aem_ams"
+          ],
+          "oauth_enabled": true
+        }' > config.json
+        npx aio config:set ims.contexts.aio-cli-plugin-cloudmanager config.json --file --json
+      shell: bash
+
+    - name: Update Cloud Manager pipeline
+      run: |
+        set -e
+        cd "${{ github.action_path }}"
+        args=("cloudmanager:pipeline:update" "${{ inputs.pipelineId }}" -p "${{ inputs.programId }}")
+        if [ "${{ github.ref_type }}" = "tag" ]; then
+          args+=(--tag "${{ github.ref_name }}")
+        else
+          args+=(--branch "${{ github.ref_name }}")
+        fi
+        if [ -n "${{ inputs.repositoryId }}" ]; then
+          args+=(--repositoryId "${{ inputs.repositoryId }}")
+        fi
+        if [ -n "${{ inputs.stageEnvironmentId }}" ]; then
+          args+=(--stageEnvironmentId "${{ inputs.stageEnvironmentId }}")
+        fi
+        npx aio "${args[@]}"
+      shell: bash
+
+    - name: Clean up config.json
+      run: cd "${{ github.action_path }}" && rm -f config.json
+      shell: bash

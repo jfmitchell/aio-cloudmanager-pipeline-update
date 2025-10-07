@@ -1,0 +1,11 @@
+{
+  "name": "aio-cloudmanager-pipeline-update",
+  "version": "1.0.0",
+  "description": "Local install for AIO CLI and Cloud Manager plugin",
+  "license": "MIT",
+  "dependencies": {
+    "@adobe/aio-cli": "latest",
+    "@adobe/aio-cli-plugin-cloudmanager": "latest"
+  }
+}
+
